@@ -16,12 +16,12 @@ from crm.schemas import (
     CategoryChoices,
     DurationUnitChoices
 )
-from django.http import JsonResponse
-from django.core.serializers import serialize
-from django.shortcuts import get_object_or_404
-from django.core.exceptions import ObjectDoesNotExist
-from django.utils import timezone
-from ninja import  NinjaAPI
+from django.http import JsonResponse # type: ignore
+from django.core.serializers import serialize # type: ignore
+from django.shortcuts import get_object_or_404 # type: ignore
+from django.core.exceptions import ObjectDoesNotExist # type: ignore
+from django.utils import timezone # type: ignore
+from ninja import  NinjaAPI # type: ignore
 from datetime import datetime,timedelta
 api = NinjaAPI()
 
@@ -295,6 +295,7 @@ def create_payment(request,order_id:int,payment_method:PaymentMethodChoices,):
 
 
 
+
 @api.post('/interactions/')
 def create_interaction(request,participant_type:ParticipantTypeChoices,participant_id:int,interaction_type:InteractionTypeChoices,interaction_details:str,outcome:str,responsible_user_id:int,follow_up_required:bool):
     if participant_type.value == ParticipantTypeChoices.Lead:
@@ -457,3 +458,4 @@ def calculate_discount(total_amount: float, discount_type: str, discount_value: 
         raise ValueError("Invalid discount type")
     
     return discount_amount
+

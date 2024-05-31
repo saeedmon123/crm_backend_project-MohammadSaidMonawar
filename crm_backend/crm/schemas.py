@@ -214,14 +214,15 @@ class SubscriptionSchema(Schema):
     id: int
     types: List[str]
     price: List[int]
+    discount:List[int]
     duration: int
     duration_unit: str  
 
 class SubscribedCustomerSchema(Schema):
     id: int
     customer_id: int
-    subscribtion:str
-    subscribtion_type:str
+    subscription:int
+    subscription_type:str
     start_date: datetime
     end_date: datetime
     status: str  

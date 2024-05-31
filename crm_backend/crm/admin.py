@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin # type: ignore
 from .models import Customer, Lead, User, Interaction, Product, Order, OrderItem, Payment, Feedback, Subscription,SubscribedCustomer, CalcPoints, LoyaltyModel, Promotion, PromotionRedemption
 
 admin.site.register(Customer)
