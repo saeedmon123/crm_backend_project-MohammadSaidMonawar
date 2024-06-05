@@ -11,6 +11,7 @@ from enum import Enum
 class StatusChoices(Enum):
     New = "New"
     Contacted = "Contacted"
+    Converted="Converted"
 
 class SourceChoices(Enum):
     Website_Form = "Website_Form"
@@ -91,7 +92,6 @@ class DurationUnitChoices(Enum):
 #-----------------------------------------------------------------------------------------
 
 class CustomerSchema(Schema):
-    id: int
     first_name: str
     last_name: str
     email: str
@@ -120,20 +120,14 @@ class LeadSchema(Schema):
     created_date: datetime
     notes: str
 
-class UserSchema(Schema):
-    id: int
-    username: str
-    email: str
-    role: str
 
 class InteractionSchema(Schema):
-    id: int
     participant_type: str
     participant_id: int
     interaction_type: str
     interaction_details: str
     outcome: str
-    responsible_user: int
+    responsible_user: str
     interaction_date: datetime
     follow_up_required: bool
 
@@ -152,6 +146,8 @@ class OrderSchema(Schema):
     customer: int
     order_date: datetime
     total_amount: float
+    original_amount:float
+    loyalty_point_used :int
     promotion_id:int
     status: str
 
@@ -177,17 +173,33 @@ class FeedbackSchema(Schema):
     review: str
     feedback_date: datetime
 
-class CalcPointsSchema(Schema):
-    id: int
-    onepointforXdollar: int
+class LoyaltyThresholdSchema(Schema):
+    onepointforXdollar: int  # Points earned per X dollars spent
+    minimum_order_amount: float  # Minimum order amount to earn points
+    min_points_to_redeem: int  # Minimum points required to start redeeming
+    points_expiry_days: int  # Number of days before points expire
+    tier_name: list[str]  # Name of the tier (e.g., Bronze, Silver, Gold)
+    points_for_next_tier: list[int]  # Points required to reach the next tier
+    tier_discount: list[float]  # Discount percentage for this tier
+    last_updated: datetime  # Timestamp for the last update of this threshold
 
 class LoyaltyModelSchema(Schema):
-    id: int
-    CalcPoints: int
+    loyaltyThreshold: int
     customer: int
     points: int
     tier: str
     last_updated: datetime
+    
+class loyaltyRedepmtionSchema(Schema):
+    id:int
+    LoyaltyModel:int
+    Customer:int
+    points_used:int
+    redemption_date:int
+
+
+
+
 
 class PromotionSchema(Schema):
     id: int
@@ -214,15 +226,14 @@ class SubscriptionSchema(Schema):
     id: int
     types: List[str]
     price: List[int]
-    discount:List[int]
     duration: int
     duration_unit: str  
 
 class SubscribedCustomerSchema(Schema):
     id: int
     customer_id: int
-    subscription:int
-    subscription_type:str
+    subscribtion:str
+    subscribtion_type:str
     start_date: datetime
     end_date: datetime
     status: str  

@@ -1,17 +1,27 @@
-from django.db import models # type: ignore
-
-from django.contrib.auth.models import User # type: ignore
-from django.utils import timezone # type: ignore
+from django.db import models
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
+from django.contrib.auth.models import User
+from django.utils import timezone
+from django.core.validators import RegexValidator
 
 from django.core.exceptions import ValidationError
 
+
+def validate_phone_number(value):
+    # You can extend this regex to handle various phone number formats.
+    phone_regex = RegexValidator(
+        regex=r'^\+?1?\d{9,15}$',
+        message="Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed."
+    )
+    phone_regex(value)
 
 class Customer(models.Model):
     id = models.AutoField(primary_key=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=20)
+    phone_number = models.CharField(max_length=20, validators=[validate_phone_number])
     address = models.CharField(max_length=255)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
@@ -29,6 +39,7 @@ class Lead(models.Model):
     STATUS_CHOICES = [
         ("New", "New"),
         ("Contacted", "Contacted"),
+        ("Converted", "Converted")
     ]
     SOURCE_CHOICES = [
         ("Website_Form", "Website_Form"),
@@ -41,7 +52,7 @@ class Lead(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=20)
+    phone_number = models.CharField(max_length=20, validators=[validate_phone_number])
     address = models.CharField(max_length=255)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
@@ -56,23 +67,25 @@ class Lead(models.Model):
     def __str__(self):
         return f"Lead {self.pk}"
 
-class User(models.Model):
-    ROLE_CHOICES = [
-        ("Sales_Representative", "Sales_Representative"),
-        ("Customer_Support_Agent", "Customer_Support_Agent"),
-        ("Account_Manager", "Account_Manager"),
+
     
+
+class Profile(models.Model):
+    ROLE_CHOICES = [
+        ("Sales_Representative", "Sales Representative"),
+        ("Customer_Support_Agent", "Customer Support Agent"),
+        ("Account_Manager", "Account Manager"),
     ]
 
-    id = models.AutoField(primary_key=True)
-    username = models.CharField(max_length=100)
-    email = models.EmailField()
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
     role = models.CharField(max_length=100, choices=ROLE_CHOICES)
 
+    def __str__(self):
+        return f"{self.user.username} - {self.role}"
 
 class Interaction(models.Model):
     INTERACTION_TYPE_CHOICES = [
-        ("Phone_Call", "Phone_Call"),
+        ("Phone_Call", "Phone Call"),
         ("Email", "Email"),
         ("Meeting", "Meeting"),
     ]
@@ -83,14 +96,38 @@ class Interaction(models.Model):
     ]
     
     id = models.AutoField(primary_key=True)
-    participant_type = models.CharField(max_length=20, choices=PARTICIPANT_TYPES_CHOICES, null=True)
-    participant_id = models.IntegerField(null=True)  # Assuming this is an integer field storing the ID of either Lead or Customer
-    interaction_type = models.CharField(max_length=100, null=True, choices=INTERACTION_TYPE_CHOICES)
+    participant_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True)
+    participant_id = models.PositiveIntegerField(null=True)
+    participant = GenericForeignKey('participant_type', 'participant_id')
+    interaction_type = models.CharField(max_length=100, choices=INTERACTION_TYPE_CHOICES, null=True)
     interaction_details = models.TextField(null=True)
     outcome = models.CharField(max_length=100, blank=True)
     responsible_user = models.ForeignKey(User, on_delete=models.CASCADE, null=True)
     interaction_date = models.DateTimeField(null=True)
-    follow_up_required = models.BooleanField(default=False)
+    follow_up_required=models.BooleanField(default=False)
+    follow_up_date = models.DateField(null=True, blank=True)  
+    follow_up_notes = models.TextField(blank=True)  
+
+    def schedule_follow_up(self, follow_up_date, follow_up_notes):
+        self.follow_up_required = True
+        self.follow_up_date = follow_up_date
+        self.follow_up_notes = follow_up_notes
+        self.save()
+
+    def clear_follow_up(self):
+        self.follow_up_required = False
+        self.follow_up_date = None
+        self.follow_up_notes = ""
+        self.save()
+
+    def clean(self):
+
+        if self.participant_type and self.participant_id:
+            try:
+                participant_class = self.participant_type.model_class()
+                participant = participant_class.objects.get(pk=self.participant_id)
+            except participant_class.DoesNotExist:
+                raise ValidationError("Participant does not exist.")
 
     def clean(self):
         if self.participant_type == 'Lead':
@@ -139,6 +176,7 @@ class Promotion(models.Model):
     discount_type = models.CharField(max_length=100, choices=DISCOUNT_TYPE_CHOICES)
     discount_value = models.FloatField()
     expiration_date = models.DateTimeField(null=True,blank=True)
+    expired = models.BooleanField(default=False)
     usage_limits = models.IntegerField()
 
     @classmethod
@@ -146,6 +184,7 @@ class Promotion(models.Model):
         promotion = cls.objects.get(id = promotion_id)
         if promotion.usage_limits == 0:
             promotion.expiration_date=timezone.now()
+            promotion.expired=True
             promotion.save()
 
 
@@ -160,6 +199,8 @@ class Order(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     order_date = models.DateTimeField(auto_now_add=True)
     total_amount = models.FloatField()
+    order_message=models.JSONField(default=dict)
+    loyalty_point_used = models.IntegerField(null=True,blank=True,default=0)
     promotion = models.ForeignKey(Promotion,on_delete=models.CASCADE,null=True,blank=True)
     status = models.CharField(max_length=100, choices=STATUS_CHOICES)
 
@@ -262,42 +303,58 @@ class SubscribedCustomer(models.Model):
 
 
 
-class CalcPoints(models.Model):
-    id=models.AutoField(primary_key=True)
-    onepointforXdollar=models.IntegerField(default=0)
+class LoyaltyThreshold(models.Model):
+    id = models.AutoField(primary_key=True)
+    onepointforXdollar = models.IntegerField()  # Points earned per X dollars spent
+    minimum_order_amount = models.FloatField()  # Minimum order amount to earn points
+    min_points_to_redeem = models.IntegerField()  # Minimum points required to start redeeming
+    points_expiry_days = models.IntegerField()  # Number of days before points expire
+    tier_name = models.JSONField()  # List of tier names (e.g., ["Bronze", "Silver", "Gold"])
+    points_for_next_tier = models.JSONField()  # List of points required to reach each tier
+    tier_discount = models.JSONField()  # List of discount percentages for each tier
+
+    def __str__(self):
+        return f"{self.tier_name} Threshold"
 
 class LoyaltyModel(models.Model):
-    TIER_CHOICES = [
-        ("Bronze","Bronze"),
-        ("Silver", "Silver"),
-        ("Gold", "Gold"),
-        ("Platinum", "Platinum"),
-    ]
-
     id = models.AutoField(primary_key=True)
-    CalcPoints=models.ForeignKey(CalcPoints,on_delete=models.CASCADE)
+    loyaltyThreshold=models.ForeignKey(LoyaltyThreshold,on_delete=models.CASCADE,null=True)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    tier = models.CharField(max_length=50)
     points = models.IntegerField(default=0)
-    tier = models.CharField(max_length=100, choices=TIER_CHOICES)
     last_updated = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        if self.loyaltyThreshold:
+            # Check if points_expiry_days is set for the associated threshold
+            if self.loyaltyThreshold.points_expiry_days:
+                expiry_date = self.last_updated + timezone.timedelta(days=self.loyaltyThreshold.points_expiry_days)
+                if expiry_date < timezone.now():
+                    self.points = 0  # Set points to 0 if expired
 
+        super().save(*args, **kwargs)  # Call the original save method to save the object
+        
+    
     @classmethod
     def upgrade_tier(cls, loyalty_model_id):
         loyalty_model = LoyaltyModel.objects.get(id=loyalty_model_id)
-        if loyalty_model.points >= 1500:
-            loyalty_model.tier = 'Platinum'
-        elif loyalty_model.points >= 1000:
-            loyalty_model.tier = 'Gold'
-        elif loyalty_model.points >= 500:
-            loyalty_model.tier = 'Silver'
-        else:
-            loyalty_model.tier = 'Bronze'
-        loyalty_model.save()
-
-    
+        current_points = loyalty_model.points
+   
+        # Ensure loyaltyThreshold is not None
+        if loyalty_model.loyaltyThreshold:
+            # Iterate over points_for_next_tier and tier_name together
+            for points, tier_name in zip(loyalty_model.loyaltyThreshold.points_for_next_tier, loyalty_model.loyaltyThreshold.tier_name):
+                if current_points >= points:
+                    loyalty_model.tier = tier_name
+                    loyalty_model.save()
 
 
+class loyalRedemption(models.Model):
+    id = models.AutoField(primary_key=True)
+    LoyaltyModel = models.ForeignKey(LoyaltyModel,on_delete=models.CASCADE)
+    Customer = models.ForeignKey(Customer,on_delete=models.CASCADE)
+    points_used = models.IntegerField(blank=True,null=True,default=0)
+    redemption_date=models.DateTimeField(auto_now_add=True)
 
 
 class PromotionRedemption(models.Model):
